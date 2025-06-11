@@ -83,8 +83,11 @@ yarn dev
 ```
 
 🤖 Coming Soon
+
 📱 Mobile App Interface
 
 📥 Data Export as PDF/CSV
+
 🧠 AI Anomaly Detection
+
 🛡️ Auth + Role-based Access Control

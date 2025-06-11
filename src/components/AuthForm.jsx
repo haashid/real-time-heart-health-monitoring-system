@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { auth, firestore } from "../services/firebase"
+import { auth, database } from "../services/firebase"
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, onAuthStateChanged } from "firebase/auth"
-import { doc, setDoc } from "firebase/firestore"
+import { ref, set } from "firebase/database"
 
 export default function AuthForm() {
   const [email, setEmail] = useState("")
@@ -58,15 +58,15 @@ export default function AuthForm() {
         const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password)
         const newUser = userCredential.user
 
-        // Create user document in Firestore
-        const userDocRef = doc(firestore, "users", newUser.uid)
-        await setDoc(userDocRef, {
+        // Create user document in Realtime Database
+        const userRef = ref(database, `users/${newUser.uid}`)
+        await set(userRef, {
           name: name.trim(),
           status: "Stable",
           email: newUser.email,
           caretakerEmail: caretakerEmail.trim() || null,
           deviceId: "device1", // Default device assignment
-          createdAt: new Date(),
+          createdAt: new Date().toISOString(),
           fcmToken: null, // Will be set when user enables notifications
         })
 

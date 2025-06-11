@@ -1,8 +1,8 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { doc, onSnapshot } from "firebase/firestore"
-import { firestore } from "../services/firebase"
+import { ref, onValue } from "firebase/database"
+import { database } from "../services/firebase"
 
 export default function ECGCard() {
   const [ecgData, setEcgData] = useState([])
@@ -11,21 +11,28 @@ export default function ECGCard() {
   const [heartRate, setHeartRate] = useState(72)
 
   useEffect(() => {
-    const docRef = doc(firestore, "sensorData", "device1")
+    const deviceRef = ref(database, "device1")
 
-    const unsubscribe = onSnapshot(
-      docRef,
+    const unsubscribe = onValue(
+      deviceRef,
       (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data()
-          setHeartRate(data.heartRate || 72)
+        const data = snapshot.val()
+        if (data) {
+          setHeartRate(data.heartRate_bpm || 72)
 
-          // Handle different ECG data formats
-          if (data.ecg && Array.isArray(data.ecg)) {
-            setEcgData(data.ecg)
+          // Handle ECG data more reliably
+          if (data.ecg) {
+            if (Array.isArray(data.ecg)) {
+              setEcgData(data.ecg.slice(-100)) // Keep last 100 points
+            } else if (typeof data.ecg === "number") {
+              // Generate realistic ECG based on current reading
+              setEcgData(generateRealisticECGData(data.heartRate_bpm || 72))
+            } else {
+              setEcgData(generateRealisticECGData(data.heartRate_bpm || 72))
+            }
           } else {
             // Generate realistic ECG data based on heart rate
-            setEcgData(generateRealisticECGData(data.heartRate || 72))
+            setEcgData(generateRealisticECGData(data.heartRate_bpm || 72))
           }
 
           setIsConnected(true)
@@ -54,7 +61,7 @@ export default function ECGCard() {
     const data = []
     const beatsPerSecond = bpm / 60
     const samplesPerBeat = points / (beatsPerSecond * 3) // 3 seconds of data
-    
+
     for (let i = 0; i < points; i++) {
       const beatProgress = (i % samplesPerBeat) / samplesPerBeat
       let value = 0
@@ -88,7 +95,7 @@ export default function ECGCard() {
 
       // Add realistic noise
       value += (Math.random() - 0.5) * 0.03
-      
+
       // Normalize to reasonable range
       data.push(Math.max(-1, Math.min(1, value)))
     }
@@ -147,10 +154,8 @@ export default function ECGCard() {
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#ff4757" strokeWidth="2">
           <path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>
         </svg>
-        <span style={{ marginLeft: "8px", color: "#fff", fontSize: "16px", fontWeight: "500" }}>ECG</span>
-        <span style={{ marginLeft: "auto", color: "#6e7891", fontSize: "12px" }}>
-          {heartRate} BPM
-        </span>
+        <span style={{ marginLeft: "8px", color: "#fff", fontSize: "16px", fontWeight: "500" , marginRight:"15px" }}>ECG      </span>
+        <span style={{ marginLeft: "auto", color: "#6e7891", fontSize: "12px" }}>{heartRate} BPM</span>
       </div>
 
       <div style={{ position: "relative", width: "140px", height: "90px", marginBottom: "10px" }}>
@@ -158,10 +163,10 @@ export default function ECGCard() {
           width="140"
           height="90"
           viewBox="0 0 140 90"
-          style={{ 
-            backgroundColor: "rgba(18, 22, 33, 0.8)", 
+          style={{
+            backgroundColor: "rgba(18, 22, 33, 0.8)",
             borderRadius: "8px",
-            border: "1px solid rgba(255, 255, 255, 0.05)"
+            border: "1px solid rgba(255, 255, 255, 0.05)",
           }}
         >
           {/* Enhanced grid lines */}
@@ -173,21 +178,21 @@ export default function ECGCard() {
               <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(0, 225, 217, 0.25)" strokeWidth="1" />
             </pattern>
           </defs>
-          
+
           <rect width="140" height="90" fill="url(#ecg-grid)" />
           <rect width="140" height="90" fill="url(#ecg-grid-major)" />
 
           {/* ECG waveform with glow effect */}
           <defs>
             <filter id="glow">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-              <feMerge> 
-                <feMergeNode in="coloredBlur"/>
-                <feMergeNode in="SourceGraphic"/>
+              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+              <feMerge>
+                <feMergeNode in="coloredBlur" />
+                <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
           </defs>
-          
+
           <path
             d={getECGPath()}
             fill="none"
@@ -197,7 +202,7 @@ export default function ECGCard() {
             strokeLinejoin="round"
             filter="url(#glow)"
             style={{
-              animation: isConnected ? "ecg-pulse 0.1s ease-in-out" : "none"
+              animation: isConnected ? "ecg-pulse 0.1s ease-in-out" : "none",
             }}
           />
         </svg>
@@ -213,7 +218,7 @@ export default function ECGCard() {
             borderRadius: "50%",
             backgroundColor: isConnected ? "#00e1d9" : "#ff4757",
             boxShadow: `0 0 10px ${isConnected ? "#00e1d9" : "#ff4757"}`,
-            animation: isConnected ? "pulse 2s infinite" : "none"
+            animation: isConnected ? "pulse 2s infinite" : "none",
           }}
         ></div>
       </div>

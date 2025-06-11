@@ -3,8 +3,8 @@
 import { Suspense, useRef, useState, useEffect } from "react"
 import { Canvas, useFrame } from "@react-three/fiber"
 import { OrbitControls, useGLTF } from "@react-three/drei"
-import { doc, onSnapshot } from "firebase/firestore"
-import { firestore } from "../services/firebase"
+import { ref, onValue, off } from "firebase/database"
+import { database } from "../services/firebase"
 
 function Model({ url, heartRate }) {
   const gltf = useGLTF(url, true)
@@ -68,17 +68,17 @@ function Fallback() {
 }
 
 export default function HeartModel() {
-  const [heartRate, setHeartRate] = useState(72) // Default to 72 for demo
+  const [heartRate, setHeartRate] = useState() // Default to 72 for demo
 
   useEffect(() => {
-    const docRef = doc(firestore, "sensorData", "device1")
+    const heartRateRef = ref(database, "device1/heartRate_bpm")
 
-    const unsubscribe = onSnapshot(
-      docRef,
+    const unsubscribe = onValue(
+      heartRateRef,
       (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data()
-          setHeartRate(data.heartRate)
+        const value = snapshot.val()
+        if (value !== null) {
+          setHeartRate(value)
         }
       },
       (error) => {
@@ -86,7 +86,7 @@ export default function HeartModel() {
       },
     )
 
-    return () => unsubscribe()
+    return () => off(heartRateRef, "value", unsubscribe)
   }, [])
 
   return (

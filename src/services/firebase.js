@@ -1,11 +1,13 @@
 import { initializeApp } from "firebase/app"
 import { getAnalytics } from "firebase/analytics"
 import { getFirestore } from "firebase/firestore"
+import { getDatabase } from "firebase/database"
 import { getAuth, useDeviceLanguage } from "firebase/auth"
 
 const firebaseConfig = {
   apiKey: "AIzaSyBxsIb4yLh8xSh1ahZf9a4q2T_gBfzcLc0",
   authDomain: "healthapp-43e82.firebaseapp.com",
+  databaseURL: "https://healthapp-43e82-default-rtdb.firebaseio.com", // Add your Realtime Database URL
   projectId: "healthapp-43e82",
   storageBucket: "healthapp-43e82.appspot.com",
   messagingSenderId: "924708456975",
@@ -33,16 +35,14 @@ if (typeof window !== "undefined") {
   }
 }
 
-// Initialize Firestore
+// Initialize Firestore (keeping for components that still use it)
 export const firestore = getFirestore(app)
+
+// Initialize Realtime Database
+export const database = getDatabase(app)
 
 // Initialize Auth
 export const auth = getAuth(app)
-
-// Configure Auth settings
-if (typeof window !== "undefined") {
-  useDeviceLanguage(auth)
-}
 
 // Enable offline persistence for Firestore
 if (typeof window !== "undefined") {
@@ -50,6 +50,9 @@ if (typeof window !== "undefined") {
     // You can add offline persistence configuration here if needed
   })
 }
+
+// Configure Auth settings
+useDeviceLanguage(auth)
 
 export { analytics }
 export default app

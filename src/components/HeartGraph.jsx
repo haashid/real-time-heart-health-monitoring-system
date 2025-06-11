@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts"
-import { doc, onSnapshot } from "firebase/firestore"
-import { firestore } from "../services/firebase"
+import { ref, onValue } from "firebase/database"
+import { database } from "../services/firebase"
 
 export default function HeartGraph() {
   const [data, setData] = useState([
@@ -20,32 +20,30 @@ export default function HeartGraph() {
   ])
 
   useEffect(() => {
-    const docRef = doc(firestore, "sensorData", "device1")
+    const heartRateRef = ref(database, "device1/heartRate_bpm")
 
-    const unsubscribe = onSnapshot(
-      docRef,
+    const unsubscribe = onValue(
+      heartRateRef,
       (snapshot) => {
-        if (snapshot.exists()) {
-          const item = snapshot.data()
+        const heartRate = snapshot.val()
+        if (heartRate !== null) {
           const time = new Date().toLocaleTimeString([], {
             hour: "2-digit",
             minute: "2-digit",
             second: "2-digit",
           })
 
-          if (item?.heartRate) {
-            setData((prev) => {
-              const newData = [
-                ...prev.slice(-9), // Keep only last 10 data points
-                { time, bpm: item.heartRate },
-              ]
-              return newData
-            })
-          }
+          setData((prev) => {
+            const newData = [
+              ...prev.slice(-9), // Keep only last 10 data points
+              { time, bpm: heartRate },
+            ]
+            return newData
+          })
         }
       },
       (error) => {
-        console.error("Error listening to sensor data:", error)
+        console.error("Error listening to heart rate:", error)
       },
     )
 

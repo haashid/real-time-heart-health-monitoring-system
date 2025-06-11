@@ -1,31 +1,31 @@
-"use client";
+"use client"
 
-import { useState } from "react";
-import { signOut } from "firebase/auth";
-import { auth } from "../services/firebase";
-import HeartModel from "../components/HeartModel";
-import HeartGraph from "../components/HeartGraph";
-import HealthDashboard from "../components/HealthDashboard";
-import UserDetails from "../components/UserDetails";
-import HealthAlerts from "../components/HealthAlerts";
-import EmailSetupForm from "../components/EmailSetupForm";
-import { LogOut } from "lucide-react";
+import { useState } from "react"
+import { signOut } from "firebase/auth"
+import { auth } from "../services/firebase"
+import HeartModel from "../components/HeartModel"
+import HeartGraph from "../components/HeartGraph"
+import HealthDashboard from "../components/HealthDashboard"
+import UserDetails from "../components/UserDetails"
+import HealthAlerts from "../components/HealthAlerts"
+import EmailSetupForm from "../components/EmailSetupForm"
+import { LogOut } from "lucide-react"
 
 export default function Dashboard() {
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false)
 
   const handleLogout = async () => {
-    setIsLoggingOut(true);
+    setIsLoggingOut(true)
     try {
-      await signOut(auth);
-      console.log("User logged out successfully");
+      await signOut(auth)
+      console.log("User logged out successfully")
     } catch (error) {
-      console.error("Logout error:", error);
-      alert("Failed to logout. Please try again.");
+      console.error("Logout error:", error)
+      alert("Failed to logout. Please try again.")
     } finally {
-      setIsLoggingOut(false);
+      setIsLoggingOut(false)
     }
-  };
+  }
 
   return (
     <div
@@ -88,14 +88,7 @@ export default function Dashboard() {
                 boxShadow: "0 4px 12px 0 rgba(0, 0, 0, 0.2)",
               }}
             >
-              <svg
-                width="18"
-                height="18"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-              >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
               </svg>
             </button>
@@ -158,5 +151,5 @@ export default function Dashboard() {
         </div>
       </div>
     </div>
-  );
+  )
 }

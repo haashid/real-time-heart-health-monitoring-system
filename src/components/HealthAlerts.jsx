@@ -1,467 +1,252 @@
 "use client"
 
-import { useEffect, useState } from "react"
-import { doc, onSnapshot, collection, addDoc, updateDoc, setDoc } from "firebase/firestore"
-import { getAuth, onAuthStateChanged } from "firebase/auth"
-import { firestore } from "../services/firebase"
-import NotificationService from "../services/NotificationService"
+import { useState, useEffect } from "react"
+import { ref, onValue } from "firebase/database"
+import { database } from "../services/firebase"
+import { AlertTriangle, Info, Heart, Activity } from "lucide-react"
 
-const HealthAlerts = () => {
-  const [sensorData, setSensorData] = useState(null)
+// Define normal ranges for health metrics
+const NORMAL_RANGES = {
+  heartRate: {
+    min: 60,
+    max: 100,
+    unit: "BPM",
+    name: "Heart Rate",
+    criticalLow: 50,
+    criticalHigh: 120,
+  },
+  spo2: {
+    min: 95,
+    max: 100,
+    unit: "%",
+    name: "Blood Oxygen",
+    criticalLow: 90,
+  },
+  temperature: {
+    min: 36.1,
+    max: 37.2,
+    unit: "°C",
+    name: "Body Temperature",
+    criticalHigh: 39.0,
+  },
+}
+
+export default function HealthAlerts() {
   const [alerts, setAlerts] = useState([])
-  const [user, setUser] = useState(null)
-  const [userData, setUserData] = useState(null)
-  const [lastAlertTime, setLastAlertTime] = useState({})
-  const [alertHistory, setAlertHistory] = useState([])
+  const [currentData, setCurrentData] = useState({})
+  const [isConnected, setIsConnected] = useState(false)
+  const [lastUpdate, setLastUpdate] = useState(null)
 
   useEffect(() => {
-    const auth = getAuth()
-    const unsubscribeAuth = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser)
-    })
-    return () => unsubscribeAuth()
-  }, [])
+    // Monitor real-time Firebase data
+    const deviceRef = ref(database, "device1")
 
-  useEffect(() => {
-    if (!user) return
-
-    const userDocRef = doc(firestore, "users", user.uid)
-    const unsubscribeUser = onSnapshot(userDocRef, async (userSnap) => {
-      if (userSnap.exists()) {
-        const userInfo = userSnap.data();
-        setUserData(userInfo);
-        console.log("User data loaded:", userInfo);
-        console.log("Caretaker email from user data:", userInfo.caretakerEmail);
-      } else {
-        // Create user document if it doesn't exist
-        console.log("User document doesn't exist, creating one...");
-        try {
-          await setDoc(userDocRef, {
-            email: user.email,
-            name: user.displayName || "Health App User",
-            createdAt: new Date(),
-            alertsEnabled: false,
-          });
-          console.log("Created user document");
-        } catch (error) {
-          console.error("Error creating user document:", error);
-        }
-      }
-    }, (error) => {
-      console.error("Error listening to user document:", error);
-    })
-
-    return () => unsubscribeUser()
-  }, [user])
-
-  useEffect(() => {
-    const docRef = doc(firestore, "sensorData", "device1")
-
-    const unsubscribe = onSnapshot(
-      docRef,
+    const unsubscribe = onValue(
+      deviceRef,
       (snapshot) => {
-        if (snapshot.exists()) {
-          const data = snapshot.data()
-          setSensorData(data)
+        const data = snapshot.val()
+        if (data) {
+          setCurrentData(data)
+          setIsConnected(true)
+          setLastUpdate(new Date())
 
-          // Generate alerts based on sensor data
-          const newAlerts = []
-          const currentTime = new Date()
-
-          // Heart Rate Alerts
-          if (data.heartRate) {
-            if (data.heartRate < 50) {
-              const alertId = "critical-low-heart-rate"
-              const alert = {
-                id: alertId,
-                type: "critical",
-                title: "Critical: Very Low Heart Rate",
-                message: `Heart rate is ${data.heartRate} BPM (critically low - normal range: 60-100 BPM)`,
-                timestamp: currentTime,
-                severity: "high",
-                value: data.heartRate,
-                parameter: "heartRate",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            } else if (data.heartRate < 60) {
-              const alertId = "low-heart-rate"
-              const alert = {
-                id: alertId,
-                type: "warning",
-                title: "Low Heart Rate",
-                message: `Heart rate is ${data.heartRate} BPM (below normal range of 60-100 BPM)`,
-                timestamp: currentTime,
-                severity: "medium",
-                value: data.heartRate,
-                parameter: "heartRate",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            } else if (data.heartRate > 120) {
-              const alertId = "critical-high-heart-rate"
-              const alert = {
-                id: alertId,
-                type: "critical",
-                title: "Critical: Very High Heart Rate",
-                message: `Heart rate is ${data.heartRate} BPM (critically high - normal range: 60-100 BPM)`,
-                timestamp: currentTime,
-                severity: "high",
-                value: data.heartRate,
-                parameter: "heartRate",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            } else if (data.heartRate > 100) {
-              const alertId = "high-heart-rate"
-              const alert = {
-                id: alertId,
-                type: "warning",
-                title: "High Heart Rate",
-                message: `Heart rate is ${data.heartRate} BPM (above normal range of 60-100 BPM)`,
-                timestamp: currentTime,
-                severity: "medium",
-                value: data.heartRate,
-                parameter: "heartRate",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            }
-          }
-
-          // SpO2 Alerts
-          if (data.spo2) {
-            if (data.spo2 < 90) {
-              const alertId = "critical-low-spo2"
-              const alert = {
-                id: alertId,
-                type: "critical",
-                title: "Critical: Very Low Blood Oxygen",
-                message: `SpO2 is ${data.spo2}% (critically low - normal range: 95-100%)`,
-                timestamp: currentTime,
-                severity: "high",
-                value: data.spo2,
-                parameter: "spo2",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            } else if (data.spo2 < 95) {
-              const alertId = "low-spo2"
-              const alert = {
-                id: alertId,
-                type: "warning",
-                title: "Low Blood Oxygen",
-                message: `SpO2 is ${data.spo2}% (below normal range of 95-100%)`,
-                timestamp: currentTime,
-                severity: "medium",
-                value: data.spo2,
-                parameter: "spo2",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            }
-          }
-
-          // Temperature Alerts (if available)
-          if (data.temperature) {
-            if (data.temperature > 38.5) {
-              const alertId = "high-temperature"
-              const alert = {
-                id: alertId,
-                type: "warning",
-                title: "High Body Temperature",
-                message: `Body temperature is ${data.temperature}°C (above normal range)`,
-                timestamp: currentTime,
-                severity: "medium",
-                value: data.temperature,
-                parameter: "temperature",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            } else if (data.temperature < 35.0) {
-              const alertId = "low-temperature"
-              const alert = {
-                id: alertId,
-                type: "warning",
-                title: "Low Body Temperature",
-                message: `Body temperature is ${data.temperature}°C (below normal range)`,
-                timestamp: currentTime,
-                severity: "medium",
-                value: data.temperature,
-                parameter: "temperature",
-              }
-              newAlerts.push(alert)
-              handleAlert(alert, alertId)
-            }
-          }
-
-          // Device connectivity alert if no recent data
-          const lastUpdate = data.lastUpdated
-            ? data.lastUpdated.toDate
-              ? data.lastUpdated.toDate()
-              : new Date(data.lastUpdated)
-            : new Date()
-
-          const timeDiff = (currentTime - lastUpdate) / 1000 / 60 // minutes
-          if (timeDiff > 5) {
-            newAlerts.push({
-              id: "device-offline",
-              type: "info",
-              title: "Device Connection",
-              message: "Device has been offline for more than 5 minutes",
-              timestamp: currentTime,
-              severity: "low",
-            })
-          }
-
-          setAlerts(newAlerts)
+          // Generate alerts based on current data
+          generateAlerts(data)
+        } else {
+          setIsConnected(false)
         }
       },
       (error) => {
-        console.error("Error listening to sensor data for alerts:", error)
-        setAlerts([
-          {
-            id: "connection-error",
-            type: "error",
-            title: "Connection Error",
-            message: "Unable to connect to health monitoring device",
-            timestamp: new Date(),
-            severity: "high",
-          },
-        ])
+        console.error("Error monitoring device data:", error)
+        setIsConnected(false)
       },
     )
 
     return () => unsubscribe()
-  }, [user, userData])
+  }, [])
 
-  const handleAlert = async (alert, alertId) => {
-    const currentTime = new Date()
-    const lastAlert = lastAlertTime[alertId]
+  // Generate dynamic alerts based on sensor data
+  const generateAlerts = (data) => {
+    const newAlerts = []
+    const timestamp = new Date()
 
-    // Prevent spam - only send alerts every 5 minutes for the same issue
-    // For critical alerts, reduce the interval to 2 minutes
-    const alertInterval = alert.severity === "high" ? 2 * 60 * 1000 : 5 * 60 * 1000
+    // Check Heart Rate
+    if (data.heartRate_bpm !== undefined) {
+      const heartRate = Number(data.heartRate_bpm)
+      const range = NORMAL_RANGES.heartRate
 
-    if (lastAlert && currentTime - lastAlert < alertInterval) {
-      return
-    }
-
-    setLastAlertTime((prev) => ({
-      ...prev,
-      [alertId]: currentTime,
-    }))
-
-    try {
-      // Save alert to Firestore first
-      const alertRef = await addDoc(collection(firestore, "healthAlerts"), {
-        userId: user?.uid,
-        patientName: userData?.name || user?.displayName || "Health App User",
-        patientEmail: user?.email || "Unknown Email",
-        ...alert,
-        sentAt: currentTime,
-        emailSent: false,
-        pushSent: false,
-        caretakerEmail: userData?.caretakerEmail || null,
-      })
-
-      console.log("Alert saved to database with ID:", alertRef.id)
-      console.log("Patient name used:", userData?.name || user?.displayName || "Health App User")
-      console.log("Caretaker email used:", userData?.caretakerEmail)
-
-      // Send push notification
-      try {
-        NotificationService.showNotification(alert.title, alert.message, "/favicon.ico")
-        console.log("Push notification sent for alert:", alertId)
-
-        // Update the alert document to mark push as sent
-        await updateDoc(doc(firestore, "healthAlerts", alertRef.id), {
-          pushSent: true,
-          pushSentAt: new Date(),
+      if (heartRate < range.criticalLow) {
+        newAlerts.push({
+          id: `hr-critical-low-${timestamp.getTime()}`,
+          type: "Heart Rate",
+          message: `Critically low heart rate: ${heartRate} ${range.unit}`,
+          value: heartRate,
+          normalRange: `${range.min}-${range.max} ${range.unit}`,
+          severity: "critical",
+          icon: Heart,
+          timestamp,
         })
-      } catch (pushError) {
-        console.error("Error sending push notification:", pushError)
+      } else if (heartRate > range.criticalHigh) {
+        newAlerts.push({
+          id: `hr-critical-high-${timestamp.getTime()}`,
+          type: "Heart Rate",
+          message: `Critically high heart rate: ${heartRate} ${range.unit}`,
+          value: heartRate,
+          normalRange: `${range.min}-${range.max} ${range.unit}`,
+          severity: "critical",
+          icon: Heart,
+          timestamp,
+        })
+      } else if (heartRate < range.min) {
+        newAlerts.push({
+          id: `hr-low-${timestamp.getTime()}`,
+          type: "Heart Rate",
+          message: `Low heart rate: ${heartRate} ${range.unit}`,
+          value: heartRate,
+          normalRange: `${range.min}-${range.max} ${range.unit}`,
+          severity: "warning",
+          icon: Heart,
+          timestamp,
+        })
+      } else if (heartRate > range.max) {
+        newAlerts.push({
+          id: `hr-high-${timestamp.getTime()}`,
+          type: "Heart Rate",
+          message: `Elevated heart rate: ${heartRate} ${range.unit}`,
+          value: heartRate,
+          normalRange: `${range.min}-${range.max} ${range.unit}`,
+          severity: "warning",
+          icon: Heart,
+          timestamp,
+        })
       }
-
-      // Send email to caretaker if available
-      if (userData?.caretakerEmail) {
-        try {
-          console.log("Attempting to send email to caretaker:", userData.caretakerEmail);
-          const emailResult = await NotificationService.sendEmailAlert(userData.caretakerEmail, {
-            patientName: userData?.name || "Patient",
-            patientEmail: user?.email || "Unknown",
-            alert: alert,
-            timestamp: currentTime.toISOString(),
-          })
-
-          if (emailResult.success) {
-            console.log("Email alert sent successfully to caretaker:", userData.caretakerEmail)
-            // Update the alert document to mark email as sent
-            await updateDoc(doc(firestore, "healthAlerts", alertRef.id), {
-              emailSent: true,
-              emailSentAt: new Date(),
-            })
-          } else {
-            console.error("Failed to send email alert:", emailResult.error)
-          }
-        } catch (emailError) {
-          console.error("Error sending email alert:", emailError)
-        }
-      } else {
-        console.log("No caretaker email available for sending alerts");
-      }
-
-      // Add to alert history for display
-      setAlertHistory((prev) => [alert, ...prev.slice(0, 9)]) // Keep last 10 alerts
-
-      console.log("Alert processed successfully:", alert.title)
-    } catch (error) {
-      console.error("Error handling alert:", error)
     }
+
+    // Check SpO2
+    if (data.spo2 !== undefined) {
+      const spo2 = Number(data.spo2)
+      const range = NORMAL_RANGES.spo2
+
+      if (spo2 < range.criticalLow) {
+        newAlerts.push({
+          id: `spo2-critical-${timestamp.getTime()}`,
+          type: "Blood Oxygen",
+          message: `Critically low blood oxygen: ${spo2}${range.unit}`,
+          value: spo2,
+          normalRange: `${range.min}-${range.max}${range.unit}`,
+          severity: "critical",
+          icon: Activity,
+          timestamp,
+        })
+      } else if (spo2 < range.min) {
+        newAlerts.push({
+          id: `spo2-low-${timestamp.getTime()}`,
+          type: "Blood Oxygen",
+          message: `Below normal blood oxygen: ${spo2}${range.unit}`,
+          value: spo2,
+          normalRange: `${range.min}-${range.max}${range.unit}`,
+          severity: "warning",
+          icon: Activity,
+          timestamp,
+        })
+      }
+    }
+
+    // Check Temperature (if available)
+    if (data.temperature !== undefined) {
+      const temp = Number(data.temperature)
+      const range = NORMAL_RANGES.temperature
+
+      if (temp > range.criticalHigh) {
+        newAlerts.push({
+          id: `temp-critical-${timestamp.getTime()}`,
+          type: "Temperature",
+          message: `High fever: ${temp}${range.unit}`,
+          value: temp,
+          normalRange: `${range.min}-${range.max}${range.unit}`,
+          severity: "critical",
+          icon: AlertTriangle,
+          timestamp,
+        })
+      } else if (temp > range.max || temp < range.min) {
+        newAlerts.push({
+          id: `temp-abnormal-${timestamp.getTime()}`,
+          type: "Temperature",
+          message: `Abnormal temperature: ${temp}${range.unit}`,
+          value: temp,
+          normalRange: `${range.min}-${range.max}${range.unit}`,
+          severity: "warning",
+          icon: AlertTriangle,
+          timestamp,
+        })
+      }
+    }
+
+    // If no alerts but we have data, add a healthy status
+    if (newAlerts.length === 0 && (data.heartRate_bpm !== undefined || data.spo2 !== undefined)) {
+      newAlerts.push({
+        id: `healthy-${timestamp.getTime()}`,
+        type: "Health Status",
+        message: "All monitored parameters are within normal ranges",
+        value: "Normal",
+        normalRange: "All parameters normal",
+        severity: "info",
+        icon: Info,
+        timestamp,
+      })
+    }
+
+    // Update alerts (keep only recent ones and remove duplicates)
+    setAlerts((prevAlerts) => {
+      const allAlerts = [...newAlerts, ...prevAlerts]
+      const uniqueAlerts = allAlerts.filter(
+        (alert, index, self) => index === self.findIndex((a) => a.type === alert.type && a.severity === alert.severity),
+      )
+      return uniqueAlerts.slice(0, 8) // Keep only last 8 alerts
+    })
   }
 
-  const getAlertColor = (severity) => {
+  const getAlertTypeStyle = (severity) => {
     switch (severity) {
-      case "high":
-        return "#ff4757"
-      case "medium":
-        return "#ffa502"
-      case "low":
-        return "#3742fa"
-      default:
-        return "#6e7891"
-    }
-  }
-
-  const getAlertIcon = (type) => {
-    switch (type) {
       case "critical":
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="8" x2="12" y2="12"></line>
-            <line x1="12" y1="16" x2="12.01" y2="16"></line>
-          </svg>
-        )
+        return {
+          color: "#ff3333",
+          backgroundColor: "rgba(255, 51, 51, 0.1)",
+          borderLeft: "4px solid #ff3333",
+          animation: "pulse 2s infinite",
+        }
       case "warning":
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"></path>
-            <line x1="12" y1="9" x2="12" y2="13"></line>
-            <line x1="12" y1="17" x2="12.01" y2="17"></line>
-          </svg>
-        )
+        return {
+          color: "#ffc107",
+          backgroundColor: "rgba(255, 193, 7, 0.1)",
+          borderLeft: "4px solid #ffc107",
+        }
       case "info":
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="12" y1="16" x2="12" y2="12"></line>
-            <line x1="12" y1="8" x2="12.01" y2="8"></line>
-          </svg>
-        )
-      case "error":
-        return (
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <circle cx="12" cy="12" r="10"></circle>
-            <line x1="15" y1="9" x2="9" y2="15"></line>
-            <line x1="9" y1="9" x2="15" y2="15"></line>
-          </svg>
-        )
+        return {
+          color: "#00e1d9",
+          backgroundColor: "rgba(0, 225, 217, 0.1)",
+          borderLeft: "4px solid #00e1d9",
+        }
       default:
-        return null
-    }
-  }
-
-  const getPriorityBadge = (severity) => {
-    const colors = {
-      high: "#ff4757",
-      medium: "#ffa502",
-      low: "#3742fa",
-    }
-
-    const labels = {
-      high: "URGENT",
-      medium: "MEDIUM",
-      low: "LOW",
-    }
-
-    return (
-      <span
-        style={{
-          fontSize: "10px",
-          fontWeight: "600",
+        return {
           color: "#fff",
-          backgroundColor: colors[severity],
-          padding: "2px 6px",
-          borderRadius: "4px",
-          marginLeft: "8px",
-        }}
-      >
-        {labels[severity]}
-      </span>
-    )
+          backgroundColor: "rgba(255, 255, 255, 0.1)",
+          borderLeft: "4px solid #fff",
+        }
+    }
   }
 
-  if (alerts.length === 0) {
-    return (
-      <div
-        style={{
-          backgroundColor: "rgba(26, 31, 46, 0.6)",
-          borderRadius: "16px",
-          padding: "20px",
-          backdropFilter: "blur(10px)",
-          border: "1px solid rgba(255, 255, 255, 0.1)",
-          boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.37)",
-        }}
-      >
-        <h3 style={{ margin: "0 0 15px 0", color: "#fff", fontSize: "18px", fontWeight: "500" }}>
-          Health Alerts
-          {userData?.caretakerEmail && (
-            <span style={{ fontSize: "12px", color: "#6e7891", marginLeft: "10px" }}>📧 {userData.caretakerEmail}</span>
-          )}
-        </h3>
-
-        <div style={{ display: "flex", alignItems: "center", color: "#00e1d9" }}>
-          <svg
-            width="20"
-            height="20"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            style={{ marginRight: "10px" }}
-          >
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-            <polyline points="22,4 12,14.01 9,11.01"></polyline>
-          </svg>
-          <span>All health parameters are normal</span>
-        </div>
-
-        {/* Show recent alert history even when no current alerts */}
-        {alertHistory.length > 0 && (
-          <div style={{ marginTop: "20px" }}>
-            <h4 style={{ color: "#6e7891", fontSize: "14px", marginBottom: "10px" }}>Recent Alerts</h4>
-            <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-              {alertHistory.slice(0, 3).map((alert, index) => (
-                <div
-                  key={`${alert.id}-${index}`}
-                  style={{
-                    padding: "8px 12px",
-                    backgroundColor: "rgba(18, 22, 33, 0.3)",
-                    borderRadius: "8px",
-                    fontSize: "12px",
-                    color: "#6e7891",
-                  }}
-                >
-                  <span style={{ color: "#fff" }}>{alert.title}</span> - {alert.timestamp.toLocaleTimeString()}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </div>
-    )
+  const getConnectionStatus = () => {
+    if (!isConnected) {
+      return { color: "#f44336", text: "Disconnected", icon: "●" }
+    }
+    if (lastUpdate && Date.now() - lastUpdate.getTime() < 10000) {
+      return { color: "#4caf50", text: "Live", icon: "●" }
+    }
+    return { color: "#ff9800", text: "Delayed", icon: "●" }
   }
+
+  const connectionStatus = getConnectionStatus()
 
   return (
     <div
@@ -472,105 +257,159 @@ const HealthAlerts = () => {
         backdropFilter: "blur(10px)",
         border: "1px solid rgba(255, 255, 255, 0.1)",
         boxShadow: "0 8px 32px 0 rgba(0, 0, 0, 0.37)",
+        maxHeight: "500px",
+        display: "flex",
+        flexDirection: "column",
       }}
     >
-      <h3 style={{ margin: "0 0 20px 0", color: "#fff", fontSize: "18px", fontWeight: "500" }}>
-        Health Alerts ({alerts.length})
-        {userData?.caretakerEmail && (
-          <div style={{ fontSize: "12px", color: "#6e7891", marginTop: "5px" }}>
-            📧 Alerts sent to: {userData.caretakerEmail}
-          </div>
-        )}
-        {!userData?.caretakerEmail && (
-          <div style={{ fontSize: "12px", color: "#ffa502", marginTop: "5px" }}>⚠️ No caretaker email configured</div>
-        )}
-      </h3>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "15px" }}>
+        <h3 style={{ color: "#fff", margin: 0, fontSize: "18px", fontWeight: "500" }}>
+          Health Alerts ({alerts.length})
+        </h3>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ color: connectionStatus.color, fontSize: "12px" }}>
+            {connectionStatus.icon} {connectionStatus.text}
+          </span>
+        </div>
+      </div>
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "15px" }}>
-        {alerts.map((alert) => (
-          <div
-            key={alert.id}
-            style={{
-              display: "flex",
-              alignItems: "flex-start",
-              padding: "15px",
-              backgroundColor: "rgba(18, 22, 33, 0.5)",
-              borderRadius: "12px",
-              border: `1px solid ${getAlertColor(alert.severity)}20`,
-              boxShadow: `0 0 10px ${getAlertColor(alert.severity)}10`,
-              position: "relative",
-            }}
-          >
-            <div style={{ color: getAlertColor(alert.severity), marginRight: "12px", marginTop: "2px" }}>
-              {getAlertIcon(alert.type)}
-            </div>
-
-            <div style={{ flex: 1 }}>
+      {/* Current Values Display */}
+      {currentData && Object.keys(currentData).length > 0 && (
+        <div style={{ marginBottom: "15px" }}>
+          <h4 style={{ color: "#fff", fontSize: "14px", marginBottom: "10px" }}>Current Readings</h4>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+            {currentData.heartRate_bpm && (
               <div
                 style={{
-                  color: "#fff",
-                  fontSize: "14px",
-                  fontWeight: "500",
-                  marginBottom: "4px",
+                  padding: "8px",
+                  backgroundColor: "rgba(37, 42, 58, 0.4)",
+                  borderRadius: "6px",
                   display: "flex",
-                  alignItems: "center",
+                  justifyContent: "space-between",
                 }}
               >
-                {alert.title}
-                {getPriorityBadge(alert.severity)}
+                <span style={{ color: "#6e7891", fontSize: "12px" }}>Heart Rate</span>
+                <span style={{ color: "#fff", fontSize: "12px", fontWeight: "500" }}>
+                  {currentData.heartRate_bpm} BPM
+                </span>
               </div>
-              <div style={{ color: "#6e7891", fontSize: "13px", marginBottom: "8px" }}>{alert.message}</div>
-              <div style={{ color: "#6e7891", fontSize: "12px", display: "flex", alignItems: "center", gap: "15px" }}>
-                <span>{alert.timestamp.toLocaleTimeString()}</span>
-                {userData?.caretakerEmail && (
-                  <span style={{ color: "#00e1d9", display: "flex", alignItems: "center" }}>
-                    <svg
-                      width="12"
-                      height="12"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      style={{ marginRight: "4px" }}
-                    >
-                      <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
-                      <polyline points="22,6 12,13 2,6"></polyline>
-                    </svg>
-                    Caretaker notified
-                  </span>
-                )}
-                {alert.value && (
-                  <span style={{ color: "#fff", fontWeight: "500" }}>
-                    {alert.parameter === "heartRate" && `${alert.value} BPM`}
-                    {alert.parameter === "spo2" && `${alert.value}%`}
-                    {alert.parameter === "temperature" && `${alert.value}°C`}
-                  </span>
-                )}
+            )}
+            {currentData.spo2 && (
+              <div
+                style={{
+                  padding: "8px",
+                  backgroundColor: "rgba(37, 42, 58, 0.4)",
+                  borderRadius: "6px",
+                  display: "flex",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ color: "#6e7891", fontSize: "12px" }}>SpO₂</span>
+                <span style={{ color: "#fff", fontSize: "12px", fontWeight: "500" }}>{currentData.spo2}%</span>
               </div>
-            </div>
-
-            <div
-              style={{
-                width: "8px",
-                height: "8px",
-                borderRadius: "50%",
-                backgroundColor: getAlertColor(alert.severity),
-                marginTop: "6px",
-                animation: "pulse 2s infinite",
-              }}
-            ></div>
+            )}
           </div>
-        ))}
+        </div>
+      )}
+
+      {/* Alerts List */}
+      <div style={{ flex: 1, overflowY: "auto" }}>
+        {alerts.length === 0 ? (
+          <div
+            style={{
+              padding: "20px",
+              textAlign: "center",
+              color: "#6e7891",
+              backgroundColor: "rgba(37, 42, 58, 0.4)",
+              borderRadius: "8px",
+            }}
+          >
+            <div style={{ marginBottom: "10px" }}>No data available</div>
+            <div style={{ fontSize: "12px" }}>
+              Monitoring for:
+              <br />• Heart Rate: {NORMAL_RANGES.heartRate.min}-{NORMAL_RANGES.heartRate.max} BPM
+              <br />• SpO₂: {NORMAL_RANGES.spo2.min}-{NORMAL_RANGES.spo2.max}%
+              <br />• Temperature: {NORMAL_RANGES.temperature.min}-{NORMAL_RANGES.temperature.max}°C
+            </div>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            {alerts
+              .sort((a, b) => {
+                const severityOrder = { critical: 1, warning: 2, info: 3 }
+                return severityOrder[a.severity] - severityOrder[b.severity]
+              })
+              .map((alert) => {
+                const severityStyle = getAlertTypeStyle(alert.severity)
+                const IconComponent = alert.icon
+
+                return (
+                  <div
+                    key={alert.id}
+                    style={{
+                      padding: "12px",
+                      borderRadius: "8px",
+                      backgroundColor: severityStyle.backgroundColor,
+                      border: `1px solid ${severityStyle.color}`,
+                      borderLeft: severityStyle.borderLeft,
+                      animation: severityStyle.animation || "none",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: "8px" }}>
+                      <IconComponent size={16} color={severityStyle.color} style={{ marginTop: "2px" }} />
+                      <div style={{ flex: 1 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "flex-start",
+                            marginBottom: "4px",
+                          }}
+                        >
+                          <span style={{ color: severityStyle.color, fontWeight: "500", fontSize: "13px" }}>
+                            {alert.type}
+                          </span>
+                          <span style={{ color: severityStyle.color, fontSize: "11px", opacity: 0.8 }}>
+                            {alert.timestamp.toLocaleTimeString()}
+                          </span>
+                        </div>
+                        <p
+                          style={{
+                            margin: "0 0 6px 0",
+                            color: severityStyle.color,
+                            fontSize: "12px",
+                            lineHeight: "1.3",
+                          }}
+                        >
+                          {alert.message}
+                        </p>
+                        <div style={{ fontSize: "11px", color: severityStyle.color, opacity: 0.8 }}>
+                          Normal range: {alert.normalRange}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )
+              })}
+          </div>
+        )}
       </div>
+
+      {/* Last Update Info */}
+      {lastUpdate && (
+        <div style={{ marginTop: "10px", fontSize: "11px", color: "#6e7891", textAlign: "center" }}>
+          Last update: {lastUpdate.toLocaleTimeString()}
+        </div>
+      )}
 
       <style jsx>{`
         @keyframes pulse {
-          0%, 100% { opacity: 1; transform: scale(1); }
-          50% { opacity: 0.7; transform: scale(1.1); }
+          0% { opacity: 1; }
+          50% { opacity: 0.7; }
+          100% { opacity: 1; }
         }
       `}</style>
     </div>
   )
 }
-
-export default HealthAlerts

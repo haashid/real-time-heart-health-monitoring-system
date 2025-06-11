@@ -6,9 +6,11 @@
   <img src="https://img.shields.io/github/license/haashid/real-time-heart-health-monitoring-system?style=flat-square" />
   <img src="https://img.shields.io/github/languages/top/haashid/real-time-heart-health-monitoring-system?style=flat-square" />
 </p>
+![image]()
 
 <p align="center">
   <img src="https://github.com/user-attachments/assets/f658fe70-688e-443d-861e-fbe5b8e91d0a" alt="Dashboard Screenshot" width="90%" />
+  <img src="https://github.com/user-attachments/assets/fb7d36a0-2f69-4d5d-86cd-6b802b6f02e7" alt="Dashboard Screenshot" width="90%" />
 </p>
 
 ---

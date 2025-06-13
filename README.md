@@ -45,7 +45,8 @@ This project visualizes heart health metrics from IoT devices in real-time. It�
 
 ## 📦 Getting Started
 
-### ✅ Prerequisites
+✅ Prerequisites
+---
 
 Make sure you have these installed:
 
